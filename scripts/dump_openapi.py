@@ -805,10 +805,8 @@ def generate_spec() -> dict[str, Any]:
     # over 3.1).
     spec["openapi"] = _OPENAPI_VERSION
 
-    # The ServerStreamEvent union + per-variant defs the SSE routes $ref are
-    # already in ``components.schemas``: the app registers them itself
-    # (omnigent.server.openapi_stream_events) so the live /openapi.json
-    # resolves too.
+    # ServerStreamEvent schemas are registered by the app itself
+    # (omnigent.server.openapi_stream_events), so the SSE $refs resolve.
 
     # Rewrite SSE routes' content entries to use ``itemSchema``.
     paths = spec.get("paths", {})

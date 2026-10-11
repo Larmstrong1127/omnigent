@@ -1,10 +1,8 @@
-"""The live ``/openapi.json`` must not reference undefined schemas.
+"""The live ``/openapi.json`` must define every schema it references.
 
-``GET /v1/sessions/{session_id}/stream`` declares ``$ref:
-#/components/schemas/ServerStreamEvent``, but only ``scripts/dump_openapi.py``
-used to define that schema, so the document the server serves (and ``/docs``
-renders) carried a dangling ``$ref``. The app now registers the union itself
-(:mod:`omnigent.server.openapi_stream_events`).
+Covers the document the server serves (and ``/docs`` renders): no dangling
+``$ref``, and the stream route's ``ServerStreamEvent`` union matches the one
+in the dumped ``openapi.json`` artifact.
 """
 
 from __future__ import annotations
@@ -23,7 +21,9 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _REF = re.compile(r'"#/components/schemas/([^"]+)"')
 
 
-def _dump_module() -> Any:  # type: ignore[explicit-any]
+@pytest.fixture(scope="module")
+def dump_module() -> Any:  # type: ignore[explicit-any]
+    """``scripts/dump_openapi.py``, loaded once for the module."""
     path = _REPO_ROOT / "scripts" / "dump_openapi.py"
     module_spec = importlib.util.spec_from_file_location("scripts_dump_openapi_refs", path)
     assert module_spec is not None and module_spec.loader is not None
@@ -34,9 +34,9 @@ def _dump_module() -> Any:  # type: ignore[explicit-any]
 
 
 @pytest.fixture(scope="module")
-def live_spec() -> dict[str, Any]:  # type: ignore[explicit-any]
+def live_spec(dump_module: Any) -> dict[str, Any]:  # type: ignore[explicit-any]
     """The document the server serves at ``/openapi.json``."""
-    app = _dump_module()._build_app_with_stub_stores()
+    app = dump_module._build_app_with_stub_stores()
     response = TestClient(app).get("/openapi.json")
     assert response.status_code == 200
     body: dict[str, Any] = response.json()  # type: ignore[explicit-any]
@@ -61,9 +61,12 @@ def test_stream_route_union_and_variants_are_defined(live_spec: dict[str, Any]) 
     assert variants <= set(schemas)
 
 
-def test_live_and_dumped_specs_share_the_union(live_spec: dict[str, Any]) -> None:  # type: ignore[explicit-any]
+def test_live_and_dumped_specs_share_the_union(
+    live_spec: dict[str, Any],  # type: ignore[explicit-any]
+    dump_module: Any,  # type: ignore[explicit-any]
+) -> None:
     """One definition: the committed artifact and the live document agree."""
-    dumped = _dump_module().generate_spec()
+    dumped = dump_module.generate_spec()
     assert (
         dumped["components"]["schemas"]["ServerStreamEvent"]
         == live_spec["components"]["schemas"]["ServerStreamEvent"]
